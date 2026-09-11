@@ -478,6 +478,15 @@ if (typeof module !== "undefined") module.exports = { LABELS, readZip, decodeXml
   try { new TextDecoder("big5"); } catch (e) { missing.push("Big5 中文解碼"); }
   if (missing.length) { $("compat").hidden = false; $("compat").textContent = "這個瀏覽器不支援：" + missing.join("、") + "。請改用最新版的 Microsoft Edge 或 Google Chrome。"; }
 
+  // 只允許從自己電腦上的檔案開啟（file://）。申報檔含病患個資，不可在網站上操作。
+  // 開發測試時可加上 ?dev 略過檢查。
+  const isLocalFile = location.protocol === "file:" || /[?&]dev\b/.test(location.search);
+  if (!isLocalFile) {
+    $("compat").hidden = false;
+    $("compat").innerHTML = "<strong>請先把這個 HTML 檔下載到自己的電腦，再用 Edge 或 Chrome 開啟。</strong><br>申報檔含有病患個資，這個工具只允許在本機檔案模式下執行。下載方式：在瀏覽器按 Ctrl+S 另存新檔，或回到下載頁按「下載工具」。";
+    input.disabled = true; drop.style.pointerEvents = "none"; drop.style.opacity = "0.5"; runBtn.disabled = true;
+  }
+
   function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
   function renderList() {
     list.innerHTML = "";
