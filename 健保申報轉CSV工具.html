@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>健保申報資料去識別化轉 CSV 工具</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --card: #ffffff; --ink: #1d2733; --muted: #5d6b7a;
+    --line: #d9e0e7; --accent: #0f6e56; --accent-ink: #ffffff; --warn: #b4540a; --warn-bg: #fff4e8;
+    --ok-bg: #e9f6f1; --code-bg: #eef1f4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 17px; margin: 0 0 12px; }
+  .drop { border: 2px dashed #9fb3c2; border-radius: 10px; padding: 28px 16px; text-align: center; color: var(--muted); cursor: pointer; transition: background .15s, border-color .15s; }
+  .drop.over { background: var(--ok-bg); border-color: var(--accent); }
+  .drop strong { color: var(--ink); }
+  .drop input { display: none; }
+  ul.files { list-style: none; padding: 0; margin: 12px 0 0; font-size: 14px; }
+  ul.files li { padding: 4px 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; }
+  ul.files li span.size { color: var(--muted); }
+  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 24px; }
+  .opt label.title { display: block; font-weight: 600; margin-bottom: 4px; }
+  .opt .hint { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .opt label.radio { display: block; font-weight: normal; margin: 2px 0; }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 10px 18px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.primary:disabled { background: #9fb3c2; cursor: not-allowed; }
+  button.ghost { background: var(--code-bg); color: var(--ink); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .notice { background: var(--warn-bg); border-left: 4px solid var(--warn); padding: 10px 14px; border-radius: 6px; font-size: 14px; }
+  .log { background: var(--code-bg); border-radius: 8px; padding: 10px 14px; font: 13px/1.5 Consolas, "Courier New", monospace; max-height: 220px; overflow: auto; white-space: pre-wrap; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; white-space: nowrap; }
+  th { background: var(--code-bg); }
+  .scroll { overflow-x: auto; }
+  .stats { display: flex; flex-wrap: wrap; gap: 10px 28px; margin-bottom: 12px; }
+  .stats b { font-size: 20px; }
+  .stats span { color: var(--muted); font-size: 13px; display: block; }
+  .dl { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>健保申報資料去識別化轉 CSV 工具</h1>
+  <p class="sub">把健保門診費用申報檔（TOTFA 的 .zip 或 .xml）轉成去識別化的 CSV，方便交給 ChatGPT、Claude 等工具做資料分析。</p>
+
+  <div class="notice">所有處理都在您的電腦瀏覽器內完成，<strong>不會上傳任何資料到網路</strong>。可以離線使用。建議使用 Microsoft Edge 或 Google Chrome 開啟。</div>
+  <div id="compat" class="notice" hidden style="margin-top:10px"></div>
+
+  <div class="card">
+    <h2>1. 選擇申報檔</h2>
+    <label class="drop" id="drop">
+      <input type="file" id="fileInput" multiple accept=".zip,.xml,.XML,.ZIP">
+      <strong>把申報檔拖到這裡</strong>，或點這裡選擇檔案<br>
+      <span style="font-size:13px">支援 TOTFA-xxxxx.zip（可一次選多個月份）或解壓後的 TOTFA.xml</span>
+    </label>
+    <ul class="files" id="fileList"></ul>
+  </div>
+
+  <div class="card">
+    <h2>2. 去識別化設定</h2>
+    <div class="opts">
+      <div class="opt">
+        <label class="title">身分證統一編號（d3）</label>
+        <label class="radio"><input type="radio" name="idMode" value="code" checked> 移除，改用隨機病人代碼（P00001…）</label>
+        <label class="radio"><input type="radio" name="idMode" value="blank"> 完全移除，不留任何代碼</label>
+        <div class="hint">病人代碼只在這次轉檔內有效、無法反推回身分證，但可以分析同一位病人的多次就醫。</div>
+      </div>
+      <div class="opt">
+        <label class="title">病患姓名（d49）</label>
+        <label class="radio"><input type="radio" name="nameMode" value="mask" checked> 保留姓氏，其餘以 ○ 取代（例：王○○）</label>
+        <label class="radio"><input type="radio" name="nameMode" value="blank"> 整欄移除</label>
+      </div>
+      <div class="opt">
+        <label class="title">出生年月日（d11、d45）</label>
+        <label class="radio"><input type="radio" name="birthMode" value="year" checked> 只保留出生年（民國）</label>
+        <label class="radio"><input type="radio" name="birthMode" value="age"> 換算成就醫時年齡</label>
+        <label class="radio"><input type="radio" name="birthMode" value="keep"> 保留完整日期</label>
+        <div class="hint">完整生日加上就醫日期有被反查身分的風險，建議不要保留。</div>
+      </div>
+      <div class="opt">
+        <label class="title">醫事人員身分證（d30、d31、p16）</label>
+        <label class="radio"><input type="radio" name="staffMode" value="code" checked> 改用醫事人員代碼（DR01…）</label>
+        <label class="radio"><input type="radio" name="staffMode" value="keep"> 保留原值</label>
+        <label class="radio"><input type="radio" name="staffMode" value="blank"> 整欄移除</label>
+        <div class="hint">醫師、藥師代號通常就是本人的身分證字號。</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button class="primary" id="runBtn" disabled>開始轉換</button>
+      <button class="ghost" id="clearBtn">清除</button>
+    </div>
+  </div>
+
+  <div class="card" id="logCard" hidden>
+    <h2>處理過程</h2>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="card" id="resultCard" hidden>
+    <h2>3. 下載結果</h2>
+    <div class="stats">
+      <div><b id="stFiles">0</b><span>申報檔</span></div>
+      <div><b id="stCases">0</b><span>就醫紀錄（筆）</span></div>
+      <div><b id="stOrders">0</b><span>醫令明細（筆）</span></div>
+      <div><b id="stPatients">0</b><span>病人數</span></div>
+    </div>
+    <div class="dl" id="downloads"></div>
+    <p id="multiHint" class="hint" style="font-size:13px;color:var(--muted);margin-top:10px" hidden>每個申報檔會各自下載一個 CSV（檔名同申報檔）。瀏覽器若詢問「允許下載多個檔案」，請按允許；或改用「打包成 zip」。</p>
+    <p style="font-size:13px;color:var(--muted);margin-top:14px">CSV 為 UTF-8（含 BOM），可直接用 Excel 開啟。欄位標題為「欄位代號 + 中文名稱」，對照健保署「門診醫療費用點數申報格式（XML）」。<br>
+    注意：用 Excel 開啟時，開頭為 0 的代號（例如就醫序號 0002）會被顯示成數字，若需保留請用「資料 → 從文字/CSV 匯入」。</p>
+    <h2 style="margin-top:16px">就醫紀錄＋醫令明細預覽（前 8 筆）</h2>
+    <div class="scroll"><table id="preview"></table></div>
+  </div>
+
+  <footer>去識別化範圍：身分證統一編號、姓名、出生年月日、醫事人員代號。其他欄位（就醫日期、科別、診斷碼、藥品代號、點數等）原樣保留。就醫識別碼（d60 等）為健保系統產生的一次性亂碼，不含個人資訊，予以保留。</footer>
+</div>
+
+<script id="core">
+// ===== 欄位對照表（健保署 門診醫療費用點數申報格式 XML，112.08.25 版）=====
+const LABELS = {
+  t: {t1:"資料格式",t2:"服務機構代號",t3:"費用年月",t4:"申報方式",t5:"申報類別",t6:"申報日期",t7:"西醫一般案件申請件數",t8:"西醫一般案件申請點數",t9:"西醫專案案件申請件數",t10:"西醫專案案件申請點數",t11:"洗腎案件申請件數",t12:"洗腎案件申請點數",t13:"精神疾病社區復健申請件數",t14:"精神疾病社區復健申請點數",t15:"結核病申請件數",t16:"結核病申請點數",t17:"西醫申請件數小計",t18:"西醫申請點數小計",t19:"牙醫一般案件申請件數",t20:"牙醫一般案件申請點數",t21:"牙醫專案案件申請件數",t22:"牙醫專案案件申請點數",t23:"牙醫申請件數小計",t24:"牙醫申請點數小計",t25:"中醫一般案件申請件數",t26:"中醫一般案件申請點數",t27:"中醫專案案件申請件數",t28:"中醫專案案件申請點數",t29:"中醫申請件數小計",t30:"中醫申請點數小計",t31:"預防保健申請件數",t32:"預防保健申請點數",t33:"慢性病連續處方調劑申請件數",t34:"慢性病連續處方調劑申請點數",t35:"居家照護申請件數",t36:"居家照護申請點數",t37:"申請件數總計",t38:"申請點數總計",t39:"部分負擔件數總計",t40:"部分負擔點數總計",t41:"本次連線申報起日期",t42:"本次連線申報迄日期"},
+  d: {d1:"案件分類",d2:"流水編號",d3:"身分證統一編號",d4:"特定治療項目代號(一)",d5:"特定治療項目代號(二)",d6:"特定治療項目代號(三)",d7:"特定治療項目代號(四)",d8:"就醫科別",d9:"就醫日期",d10:"治療結束日期",d11:"出生年月日",d12:"補報原因註記",d13:"整合式照護計畫註記",d14:"給付類別",d15:"部分負擔代號",d16:"轉診、處方調劑或特定檢查資源共享案件註記",d17:"轉診、處方調劑或特定檢查資源共享案件之服務機構代號",d18:"病患是否轉出",d19:"主診斷代碼",d20:"次診斷代碼(一)",d21:"次診斷代碼(二)",d22:"次診斷代碼(三)",d23:"次診斷代碼(四)",d24:"主手術(處置)代碼",d25:"次手術(處置)代碼(一)",d26:"次手術(處置)代碼(二)",d27:"給藥日份",d28:"處方調劑方式",d29:"就醫序號",d30:"診治醫事人員代號",d31:"藥師代號",d32:"用藥明細點數小計",d33:"診療明細點數小計",d34:"特殊材料明細點數小計",d35:"診察費項目代號",d36:"診察費點數",d37:"藥事服務費項目代號",d38:"藥事服務費點數",d39:"合計點數",d40:"合計部分負擔點數",d41:"申請點數",d42:"論病例計酬代碼",d43:"行政協助項目部分負擔點數",d44:"慢性病連續處方箋有效期間總處方日份",d45:"依附就醫新生兒出生日期",d48:"山地離島地區醫療服務計畫代碼",d49:"姓名",d50:"矯正機關代號",d51:"依附就醫新生兒胞胎註記",d52:"特定地區醫療服務",d53:"支援區域",d54:"實際提供醫療服務之醫事服務機構代號",d55:"轉往之醫事服務機構代號",d56:"原處方就醫序號",d57:"基本部分負擔點數",d58:"藥品部分負擔點數",d60:"就醫識別碼",d61:"實際就醫(調劑或檢查)之就醫識別碼",d62:"原就醫識別碼"},
+  p: {p1:"藥品給藥日份",p2:"醫令調劑方式",p3:"醫令類別",p4:"藥品(項目)代號",p5:"藥品用量",p6:"診療之部位",p7:"藥品使用頻率",p8:"支付成數",p9:"給藥途徑/作用部位",p10:"總量",p11:"單價",p12:"點數",p13:"醫令序",p14:"執行時間-起",p15:"執行時間-迄",p16:"執行醫事人員代號",p17:"慢性病連續處方箋、同一療程及排程檢查案件註記",p18:"影像來源",p19:"事前審查受理編號",p20:"就醫科別",p21:"自費特材群組序號/其他特殊註記",p22:"未列項註記",p23:"未列項名稱",p24:"委託或受託執行轉(代)檢醫事機構代號",p25:"藥品批號",p26:"醫令執行就醫識別碼"}
+};
+const OUTPATIENT_FORMATS = new Set(["10", "30"]); // 10 門診、30 特約藥局 使用同一格式
+
+// ===== ZIP 解壓（使用瀏覽器內建 DecompressionStream，不需外掛程式）=====
+function findEOCD(u8) {
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 22 - 65536); i--) {
+    if (u8[i] === 0x50 && u8[i+1] === 0x4b && u8[i+2] === 0x05 && u8[i+3] === 0x06) return i;
+  }
+  throw new Error("不是有效的 ZIP 檔（找不到目錄結尾）");
+}
+async function inflateRaw(u8) {
+  const ds = new DecompressionStream("deflate-raw");
+  const stream = new Blob([u8]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function readZip(arrayBuffer) {
+  const u8 = new Uint8Array(arrayBuffer);
+  const dv = new DataView(arrayBuffer);
+  const eocd = findEOCD(u8);
+  const count = dv.getUint16(eocd + 10, true);
+  let off = dv.getUint32(eocd + 16, true);
+  const entries = [];
+  const utf8 = new TextDecoder("utf-8"), big5 = new TextDecoder("big5");
+  for (let i = 0; i < count; i++) {
+    if (dv.getUint32(off, true) !== 0x02014b50) throw new Error("ZIP 目錄損毀");
+    const flags = dv.getUint16(off + 8, true);
+    const method = dv.getUint16(off + 10, true);
+    const csize = dv.getUint32(off + 20, true);
+    const usize = dv.getUint32(off + 24, true);
+    const nlen = dv.getUint16(off + 28, true), elen = dv.getUint16(off + 30, true), clen = dv.getUint16(off + 32, true);
+    const lho = dv.getUint32(off + 42, true);
+    const nameBytes = u8.subarray(off + 46, off + 46 + nlen);
+    const name = (flags & 0x800) ? utf8.decode(nameBytes) : big5.decode(nameBytes);
+    const lnlen = dv.getUint16(lho + 26, true), lelen = dv.getUint16(lho + 28, true);
+    const dataStart = lho + 30 + lnlen + lelen;
+    const comp = u8.subarray(dataStart, dataStart + csize);
+    let data;
+    if (method === 0) data = comp;
+    else if (method === 8) data = await inflateRaw(comp);
+    else throw new Error(`不支援的壓縮方式 (${method})：${name}`);
+    if (usize && data.length !== usize) throw new Error(`解壓後大小不符：${name}`);
+    entries.push({ name, data, isDir: name.endsWith("/") });
+    off += 46 + nlen + elen + clen;
+  }
+  return entries.filter(e => !e.isDir);
+}
+
+// ===== XML 解碼與解析（申報檔為 Big5，結構單純，用自製解析器兼顧速度與相容性）=====
+function decodeXmlBytes(u8) {
+  const head = new TextDecoder("latin1").decode(u8.subarray(0, 200));
+  const m = /encoding=["']([\w-]+)["']/i.exec(head);
+  let enc = (m ? m[1] : "big5").toLowerCase();
+  if (enc === "big-5" || enc === "cp950" || enc === "ms950") enc = "big5";
+  let text;
+  try { text = new TextDecoder(enc).decode(u8); }
+  catch (e) { text = new TextDecoder("big5").decode(u8); }
+  return text;
+}
+function unescapeXml(s) {
+  if (s.indexOf("&") === -1) return s;
+  return s.replace(/&(lt|gt|amp|quot|apos|#x[0-9a-fA-F]+|#\d+);/g, (_, e) => {
+    switch (e) { case "lt": return "<"; case "gt": return ">"; case "amp": return "&"; case "quot": return '"'; case "apos": return "'"; }
+    return String.fromCodePoint(e[1] === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10));
+  });
+}
+// 回傳 { totals: {t1:..}, cases: [{ fields:{d1:..}, orders:[{p1:..}] }] }
+function parseClaimXml(text) {
+  const totals = {}; const cases = [];
+  let cur = null, order = null; let inT = false;
+  const stack = [];
+  const re = /<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!\[CDATA\[([\s\S]*?)\]\]>|<(\/?)([A-Za-z_][\w.-]*)([^>]*?)(\/?)>/g;
+  let m, last = 0, pendingText = "";
+  while ((m = re.exec(text)) !== null) {
+    const between = text.slice(last, m.index);
+    last = re.lastIndex;
+    if (m[1] !== undefined) { pendingText += m[1]; continue; }        // CDATA
+    if (m[0][1] === "?" || m[0][1] === "!") continue;                 // 宣告、註解
+    pendingText += between;
+    const closing = m[2] === "/", tag = m[3], selfClose = m[4] === "/";
+    if (!closing) {
+      pendingText = "";
+      if (tag === "tdata") inT = true;
+      else if (tag === "ddata") { cur = { fields: {}, orders: [] }; cases.push(cur); }
+      else if (tag === "pdata") { order = {}; if (cur) cur.orders.push(order); }
+      if (selfClose) { assign(tag, ""); continue; }
+      stack.push(tag);
+    } else {
+      const val = pendingText.trim(); pendingText = "";
+      if (stack.length && stack[stack.length - 1] === tag) stack.pop();
+      if (tag === "tdata") inT = false;
+      else if (tag === "pdata") order = null;
+      else if (tag === "ddata") cur = null;
+      else if (tag !== "dhead" && tag !== "dbody" && tag !== "outpatient" && tag !== "inpatient") assign(tag, unescapeXml(val));
+    }
+  }
+  function assign(tag, val) {
+    if (order) order[tag] = val;
+    else if (cur) cur.fields[tag] = val;
+    else if (inT) totals[tag] = val;
+  }
+  return { totals, cases };
+}
+
+// ===== 去識別化 =====
+function maskName(name) {
+  const chars = Array.from(name.trim());
+  if (!chars.length) return "";
+  if (chars.length === 1) return "○";
+  return chars[0] + "○".repeat(chars.length - 1);
+}
+function rocParts(s) { // 民國 yyymmdd
+  const m = /^(\d{3})(\d{2})(\d{2})$/.exec((s || "").trim());
+  return m ? { y: +m[1], m: +m[2], d: +m[3] } : null;
+}
+function ageAt(birth, visit) {
+  const b = rocParts(birth), v = rocParts(visit);
+  if (!b || !v) return "";
+  let age = v.y - b.y;
+  if (v.m < b.m || (v.m === b.m && v.d < b.d)) age--;
+  return age < 0 ? "" : String(age);
+}
+function birthValue(mode, raw, visit) {
+  if (!raw) return "";
+  if (mode === "keep") return raw;
+  if (mode === "year") { const p = rocParts(raw); return p ? String(p.y).padStart(3, "0") : raw.slice(0, 3); }
+  if (mode === "age") return ageAt(raw, visit);
+  return "";
+}
+class Pseudonymizer {
+  constructor(prefix, width) { this.map = new Map(); this.prefix = prefix; this.width = width; }
+  code(raw) {
+    const key = (raw || "").trim().toUpperCase();
+    if (!key) return "";
+    if (!this.map.has(key)) this.map.set(key, this.prefix + String(this.map.size + 1).padStart(this.width, "0"));
+    return this.map.get(key);
+  }
+  get size() { return this.map.size; }
+}
+
+// 來源檔名去掉副檔名，作為輸出 CSV 的檔名（TOTFA-11401.zip → TOTFA-11401）
+function sourceStem(source) {
+  return source.split("/").map(s => s.replace(/\.(zip|xml)$/i, "")).join("_");
+}
+
+// 將每個檔案的資料轉成表格（就醫紀錄、醫令、就醫紀錄＋醫令合併），並套用去識別化。
+// 欄位在所有檔案間一致；病人代碼與醫事人員代碼在同一次轉檔內一致，方便跨月份分析。
+function buildTables(datasets, opts) {
+  const patients = new Pseudonymizer("P", 5);
+  const staff = new Pseudonymizer("DR", 2);
+  const totalsRows = [];
+  const perSource = [];
+  const dUsed = new Set(), pUsed = new Set(), tUsed = new Set();
+  let nonOutpatient = false, caseCount = 0, orderCount = 0;
+
+  for (const ds of datasets) {
+    const fmt = (ds.totals.t1 || "").trim();
+    if (fmt && !OUTPATIENT_FORMATS.has(fmt)) nonOutpatient = true;
+    const ym = ds.totals.t3 || "";
+    const tRow = { 來源檔案: ds.source };
+    for (const [k, v] of Object.entries(ds.totals)) { tRow[k] = v; if (v !== "") tUsed.add(k); }
+    totalsRows.push(tRow);
+
+    const caseRows = [], orderRows = [], flatRows = [];
+    for (const c of ds.cases) {
+      const f = c.fields;
+      const pid = opts.idMode === "code" ? patients.code(f.d3) : "";
+      const row = { 來源檔案: ds.source, 費用年月: ym, 病人代碼: pid };
+      for (const [k, v] of Object.entries(f)) {
+        let val = v;
+        if (k === "d3") continue;                                   // 身分證：一律移除
+        if (k === "d49") { if (opts.nameMode === "blank") continue; val = maskName(v); }
+        else if (k === "d11" || k === "d45") { val = birthValue(opts.birthMode, v, f.d9); }
+        else if (k === "d30" || k === "d31") {
+          if (opts.staffMode === "blank") continue;
+          if (opts.staffMode === "code") val = staff.code(v);
+        }
+        row[k] = val; if (val !== "") dUsed.add(k);
+      }
+      caseRows.push(row);
+
+      if (!c.orders.length) flatRows.push(row);                     // 沒有醫令的就醫也保留一列
+      for (const o of c.orders) {
+        const pf = {};
+        for (const [k, v] of Object.entries(o)) {
+          let val = v;
+          if (k === "p16") {
+            if (opts.staffMode === "blank") continue;
+            if (opts.staffMode === "code") val = staff.code(v);
+          }
+          pf[k] = val; if (val !== "") pUsed.add(k);
+        }
+        orderRows.push(Object.assign({ 來源檔案: ds.source, 費用年月: ym, d1: f.d1 || "", d2: f.d2 || "", 病人代碼: pid, d9: f.d9 || "", d19: f.d19 || "" }, pf));
+        flatRows.push(Object.assign({}, row, pf));
+      }
+    }
+    caseCount += caseRows.length; orderCount += orderRows.length;
+    perSource.push({ source: ds.source, stem: sourceStem(ds.source), ym, caseRows, orderRows, flatRows });
+  }
+  const num = k => parseInt(k.slice(1), 10) || 0;
+  const sortCodes = set => Array.from(set).sort((a, b) => num(a) - num(b));
+  const label = (k, section) => {
+    const base = nonOutpatient ? k : (LABELS[section][k] ? `${k} ${LABELS[section][k]}` : k);
+    if (k === "d11" || k === "d45") {
+      if (opts.birthMode === "year") return base + "(僅年份)";
+      if (opts.birthMode === "age") return k === "d11" ? "d11 就醫時年齡" : "d45 依附就醫新生兒就醫時年齡";
+    }
+    if ((k === "d30" || k === "d31" || k === "p16") && opts.staffMode === "code") return base + "(代碼)";
+    if (k === "d49" && opts.nameMode === "mask") return base + "(去識別化)";
+    return base;
+  };
+  const withPid = opts.idMode === "code";
+  const tCols = [{ key: "來源檔案", label: "來源檔案" }, ...sortCodes(tUsed).map(k => ({ key: k, label: label(k, "t") }))];
+  const dCols = [{ key: "來源檔案", label: "來源檔案" }, { key: "費用年月", label: "費用年月" }];
+  if (withPid) dCols.push({ key: "病人代碼", label: "病人代碼" });
+  dCols.push(...sortCodes(dUsed).map(k => ({ key: k, label: label(k, "d") })));
+  const pOnly = sortCodes(pUsed).map(k => ({ key: k, label: label(k, "p") }));
+  const pCols = [{ key: "來源檔案", label: "來源檔案" }, { key: "費用年月", label: "費用年月" }, { key: "d1", label: label("d1", "d") }, { key: "d2", label: label("d2", "d") }];
+  if (withPid) pCols.push({ key: "病人代碼", label: "病人代碼" });
+  pCols.push({ key: "d9", label: label("d9", "d") }, { key: "d19", label: label("d19", "d") });
+  pCols.push(...pOnly);
+  const fCols = [...dCols, ...pOnly];
+
+  // 每個來源檔各自一組表格，檔名沿用來源檔名
+  const files = perSource.map(s => ({
+    source: s.source, stem: s.stem, ym: s.ym,
+    flat: { name: `${s.stem}.csv`, columns: fCols, rows: s.flatRows },
+    cases: { name: `${s.stem}_就醫紀錄.csv`, columns: dCols, rows: s.caseRows },
+    orders: { name: `${s.stem}_醫令明細.csv`, columns: pCols, rows: s.orderRows },
+  }));
+  return {
+    files,
+    totals: { name: "申報總表.csv", columns: tCols, rows: totalsRows },
+    stats: { files: datasets.length, cases: caseCount, orders: orderCount, patients: patients.size, staff: staff.size, nonOutpatient }
+  };
+}
+
+// ===== CSV 輸出 =====
+function csvCell(v) {
+  const s = v == null ? "" : String(v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function toCsv(table) {
+  const lines = [table.columns.map(c => csvCell(c.label)).join(",")];
+  for (const r of table.rows) lines.push(table.columns.map(c => csvCell(r[c.key])).join(","));
+  return "﻿" + lines.join("\r\n") + "\r\n";
+}
+function readmeText(opts, stats) {
+  const idTxt = opts.idMode === "code" ? "已移除，改以隨機病人代碼（P00001…）取代；代碼僅在本次轉檔內一致，無法反推身分證。" : "已完全移除。";
+  const nameTxt = opts.nameMode === "mask" ? "保留姓氏，其餘字以「○」取代。" : "整欄已移除。";
+  const birthTxt = { year: "只保留民國出生年。", age: "已換算為就醫時年齡。", keep: "保留完整日期（未去識別化）。" }[opts.birthMode];
+  const staffTxt = { code: "改以代碼（DR01…）取代。", keep: "保留原值（未去識別化）。", blank: "整欄已移除。" }[opts.staffMode];
+  return [
+    "健保門診費用申報資料（去識別化）",
+    "",
+    "檔案說明（每個申報檔各自輸出，檔名沿用申報檔名，例如 TOTFA-11401.zip → TOTFA-11401.csv）：",
+    "  <檔名>.csv            就醫紀錄＋醫令明細合併表：每筆醫令一列，前段為該次就醫的 d 欄位，後段為醫令的 p 欄位。",
+    "  <檔名>_就醫紀錄.csv   每次就醫一列（d 欄位）。以「來源檔案 + d1 案件分類 + d2 流水編號」可對應醫令明細。",
+    "  <檔名>_醫令明細.csv   每筆醫令（用藥、診療、材料）一列（p 欄位），並附上所屬就醫的案件分類、流水編號、病人代碼、就醫日期、主診斷。",
+    "  申報總表.csv          每個申報檔一列，為該月申報件數與點數總計（t 欄位）。",
+    "",
+    "病人代碼與醫事人員代碼在同一次轉檔產生的所有檔案間一致，可跨月份分析同一病人。",
+    "",
+    "欄位標題格式為「欄位代號 中文名稱」，依健保署「特約醫事服務機構門診醫療費用點數申報格式及填表說明（XML 檔案格式）」112.08.25 版。",
+    "日期欄位為民國年 yyymmdd（例：1140124 = 民國 114 年 1 月 24 日）。費用年月為民國 yyymm。",
+    "",
+    "去識別化處理：",
+    "  身分證統一編號（d3）：" + idTxt,
+    "  姓名（d49）：" + nameTxt,
+    "  出生年月日（d11、d45）：" + birthTxt,
+    "  醫事人員代號（d30 診治醫事人員、d31 藥師、p16 執行醫事人員）：" + staffTxt,
+    "",
+    `統計：申報檔 ${stats.files} 個、就醫紀錄 ${stats.cases} 筆、醫令 ${stats.orders} 筆、病人 ${stats.patients} 人。`,
+    "產生時間：" + new Date().toLocaleString("zh-TW"),
+  ].join("\r\n");
+}
+
+// ===== ZIP 打包（單一下載）=====
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+async function deflateRaw(u8) {
+  const cs = new CompressionStream("deflate-raw");
+  return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(cs)).arrayBuffer());
+}
+function dosDateTime(d) {
+  const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  return { time, date };
+}
+async function buildZip(files) { // files: [{name, data:Uint8Array}]
+  const enc = new TextEncoder(); const parts = []; const central = []; let offset = 0;
+  const { time, date } = dosDateTime(new Date());
+  for (const f of files) {
+    const name = enc.encode(f.name); const crc = crc32(f.data); const comp = await deflateRaw(f.data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x800, true); lh.setUint16(8, 8, true);
+    lh.setUint16(10, time, true); lh.setUint16(12, date, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, comp.length, true); lh.setUint32(22, f.data.length, true); lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), name, comp);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x800, true); ch.setUint16(10, 8, true);
+    ch.setUint16(12, time, true); ch.setUint16(14, date, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, comp.length, true); ch.setUint32(24, f.data.length, true); ch.setUint16(28, name.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + comp.length;
+  }
+  let cdSize = 0; for (const c of central) cdSize += c.length;
+  const eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true); eocd.setUint16(8, files.length, true); eocd.setUint16(10, files.length, true);
+  eocd.setUint32(12, cdSize, true); eocd.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, new Uint8Array(eocd.buffer)], { type: "application/zip" });
+}
+
+// 讀取一個使用者選的檔案（zip 或 xml），回傳 [{source, totals, cases}]
+async function loadClaimFile(name, arrayBuffer) {
+  const lower = name.toLowerCase(); const out = [];
+  if (lower.endsWith(".zip")) {
+    const entries = await readZip(arrayBuffer);
+    const xmls = entries.filter(e => e.name.toLowerCase().endsWith(".xml"));
+    if (!xmls.length) throw new Error(`${name} 裡沒有 XML 檔`);
+    for (const e of xmls) {
+      const ds = parseClaimXml(decodeXmlBytes(e.data));
+      ds.source = xmls.length > 1 ? `${name}/${e.name}` : name;
+      out.push(ds);
+    }
+  } else {
+    const ds = parseClaimXml(decodeXmlBytes(new Uint8Array(arrayBuffer)));
+    ds.source = name; out.push(ds);
+  }
+  for (const ds of out) if (!ds.cases.length && !Object.keys(ds.totals).length) throw new Error(`${ds.source} 不像是健保申報 XML（找不到 tdata / ddata）`);
+  return out;
+}
+if (typeof module !== "undefined") module.exports = { LABELS, readZip, decodeXmlBytes, parseClaimXml, buildTables, toCsv, buildZip, readmeText, loadClaimFile, maskName, ageAt };
+</script>
+
+<script>
+// ===== 畫面互動 =====
+(function () {
+  const $ = id => document.getElementById(id);
+  const drop = $("drop"), input = $("fileInput"), list = $("fileList"), runBtn = $("runBtn"), logEl = $("log");
+  let picked = [];
+
+  const missing = [];
+  if (typeof DecompressionStream === "undefined") missing.push("ZIP 解壓（DecompressionStream）");
+  try { new TextDecoder("big5"); } catch (e) { missing.push("Big5 中文解碼"); }
+  if (missing.length) { $("compat").hidden = false; $("compat").textContent = "這個瀏覽器不支援：" + missing.join("、") + "。請改用最新版的 Microsoft Edge 或 Google Chrome。"; }
+
+  function fmtSize(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
+  function renderList() {
+    list.innerHTML = "";
+    for (const f of picked) { const li = document.createElement("li"); li.innerHTML = `<span>${esc(f.name)}</span><span class="size">${fmtSize(f.size)}</span>`; list.appendChild(li); }
+    runBtn.disabled = !picked.length;
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  function addFiles(files) {
+    for (const f of files) {
+      if (!/\.(zip|xml)$/i.test(f.name)) continue;
+      if (!picked.some(p => p.name === f.name && p.size === f.size)) picked.push(f);
+    }
+    picked.sort((a, b) => a.name.localeCompare(b.name));
+    renderList();
+  }
+  input.addEventListener("change", () => { addFiles(input.files); input.value = ""; });
+  ["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e => addFiles(e.dataTransfer.files));
+  $("clearBtn").addEventListener("click", () => { picked = []; renderList(); $("resultCard").hidden = true; $("logCard").hidden = true; logEl.textContent = ""; });
+
+  function log(msg) { logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; }
+  function opt(name) { return document.querySelector(`input[name="${name}"]:checked`).value; }
+  function download(blob, filename) {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+  // 依序下載多個 CSV（每個來源檔一個）；間隔一點時間，避免瀏覽器把連續下載擋掉
+  async function downloadAll(items) {
+    for (let i = 0; i < items.length; i++) {
+      download(new Blob([items[i].data], { type: "text/csv;charset=utf-8" }), items[i].name);
+      if (i < items.length - 1) await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  runBtn.addEventListener("click", async () => {
+    runBtn.disabled = true; $("logCard").hidden = false; $("resultCard").hidden = true; logEl.textContent = "";
+    const opts = { idMode: opt("idMode"), nameMode: opt("nameMode"), birthMode: opt("birthMode"), staffMode: opt("staffMode") };
+    const datasets = []; const t0 = performance.now();
+    try {
+      for (const f of picked) {
+        log(`讀取 ${f.name} …`);
+        try {
+          const dss = await loadClaimFile(f.name, await f.arrayBuffer());
+          for (const ds of dss) { log(`  費用年月 ${ds.totals.t3 || "?"}，就醫紀錄 ${ds.cases.length} 筆，醫令 ${ds.cases.reduce((n, c) => n + c.orders.length, 0)} 筆`); datasets.push(ds); }
+        } catch (e) { log(`  ✗ 略過：${e.message}`); }
+      }
+      if (!datasets.length) { log("沒有可轉換的資料。"); return; }
+      log("去識別化並產生 CSV …");
+      const tables = buildTables(datasets, opts);
+      if (tables.stats.nonOutpatient) log("⚠ 有檔案不是門診格式（t1 不是 10/30），欄位標題只顯示代號。");
+      const enc = new TextEncoder();
+      const many = tables.files.length > 1;
+      // 每種表格各自產生「每個來源檔一個 CSV」；CSV 內容在第一次下載時才編碼，避免占用記憶體
+      const csvFile = t => ({ name: t.name, get data() { if (!this._d) this._d = enc.encode(toCsv(t)); return this._d; } });
+      const groups = [
+        { key: "flat", title: "下載就醫紀錄＋醫令明細", primary: true, items: tables.files.map(f => csvFile(f.flat)) },
+        { key: "cases", title: "下載就醫紀錄", items: tables.files.map(f => csvFile(f.cases)) },
+        { key: "orders", title: "下載醫令明細", items: tables.files.map(f => csvFile(f.orders)) },
+        { key: "totals", title: "下載申報總表", items: [csvFile(tables.totals)] },
+      ];
+      const ymList = datasets.map(d => d.totals.t3).filter(Boolean).sort();
+      const tag = ymList.length ? (ymList[0] === ymList[ymList.length - 1] ? ymList[0] : `${ymList[0]}-${ymList[ymList.length - 1]}`) : "";
+      const zipName = `健保申報去識別化${tag ? "_" + tag : ""}.zip`;
+
+      $("stFiles").textContent = tables.stats.files; $("stCases").textContent = tables.stats.cases.toLocaleString();
+      $("stOrders").textContent = tables.stats.orders.toLocaleString(); $("stPatients").textContent = tables.stats.patients.toLocaleString();
+      $("multiHint").hidden = !many;
+      const dl = $("downloads"); dl.innerHTML = "";
+      for (const g of groups) {
+        const b = document.createElement("button"); b.className = g.primary ? "primary" : "ghost";
+        b.textContent = g.items.length === 1 ? `${g.title}（${g.items[0].name}）` : `${g.title}（${g.items.length} 個 CSV）`;
+        b.onclick = () => downloadAll(g.items);
+        dl.appendChild(b);
+      }
+      const zb = document.createElement("button"); zb.className = "ghost"; zb.textContent = `全部打包成 zip 下載（${zipName}）`;
+      zb.onclick = async () => {
+        zb.disabled = true; zb.textContent = "打包中…";
+        try {
+          const all = groups.flatMap(g => g.items).map(f => ({ name: f.name, data: f.data }));
+          all.push({ name: "說明.txt", data: enc.encode(readmeText(opts, tables.stats)) });
+          download(await buildZip(all), zipName);
+        } finally { zb.disabled = false; zb.textContent = `全部打包成 zip 下載（${zipName}）`; }
+      };
+      dl.appendChild(zb);
+
+      const tb = $("preview"); tb.innerHTML = "";
+      const first = tables.files[0].flat; const cols = first.columns;
+      tb.appendChild(el("tr", cols.map(c => el("th", [document.createTextNode(c.label)]))));
+      for (const r of first.rows.slice(0, 8)) tb.appendChild(el("tr", cols.map(c => el("td", [document.createTextNode(r[c.key] == null ? "" : r[c.key])]))));
+      $("resultCard").hidden = false;
+      log(`完成，共 ${((performance.now() - t0) / 1000).toFixed(1)} 秒。`);
+      $("resultCard").scrollIntoView({ behavior: "smooth" });
+    } catch (e) {
+      log("✗ 發生錯誤：" + (e && e.message ? e.message : e)); console.error(e);
+    } finally { runBtn.disabled = !picked.length; }
+  });
+  function el(tag, children) { const n = document.createElement(tag); for (const c of children) n.appendChild(c); return n; }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<!DOCTYPE html><meta charset="utf-8"><body><pre id="out">running</pre><iframe id="fr" src="tool.html" style="width:1000px;height:800px"></iframe>
+<script>
+(async () => {
+  const out = []; const fr = document.getElementById("fr");
+  await new Promise(r => fr.onload = r);
+  const w = fr.contentWindow, d = fr.contentDocument;
+  try {
+    const dt = new DataTransfer();
+    for (const n of ["a.zip", "b.zip"]) dt.items.add(new File([await (await fetch(n)).blob()], n === "a.zip" ? "TOTFA-11401.zip" : "TOTFA-11402.zip"));
+    d.getElementById("drop").dispatchEvent(new w.DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+    out.push("LIST " + d.getElementById("fileList").textContent.trim());
+    out.push("RUN disabled=" + d.getElementById("runBtn").disabled);
+    d.getElementById("runBtn").click();
+    for (let i = 0; i < 100 && d.getElementById("resultCard").hidden; i++) await new Promise(r => setTimeout(r, 200));
+    out.push("LOG " + d.getElementById("log").textContent.trim().replace(/\n/g, " / "));
+    out.push("STATS " + ["stFiles","stCases","stOrders","stPatients"].map(id => d.getElementById(id).textContent).join(" "));
+    out.push("BUTTONS " + Array.from(d.querySelectorAll("#downloads button")).map(b => b.textContent).join(" | "));
+    out.push("HINT hidden=" + d.getElementById("multiHint").hidden);
+    out.push("PREVIEW rows=" + d.querySelectorAll("#preview tr").length + " firstcells=" + Array.from(d.querySelectorAll("#preview tr")[1].children).slice(0, 5).map(c => c.textContent).join(","));
+    // intercept downloads and click the primary button
+    const names = []; const orig = w.URL.createObjectURL; w.URL.createObjectURL = b => { names.push(b.size); return "blob:x"; };
+    w.HTMLAnchorElement.prototype.click = function () { names.push(this.download); };
+    d.querySelector("#downloads button.primary").click();
+    await new Promise(r => setTimeout(r, 1500));
+    out.push("DOWNLOADS " + names.join(","));
+    out.push("DONE");
+  } catch (e) { out.push("ERROR " + e.message + "\n" + e.stack); }
+  document.getElementById("out").textContent = out.join("\n");
+})();
+</script>

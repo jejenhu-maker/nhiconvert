@@ -1,0 +1,13 @@
+# 真實申報資料，絕對不可上傳
+申報資料/
+*.zip
+*.xml
+*.csv
+*.7z
+*.rar
+
+# 系統與編輯器
+Thumbs.db
+.DS_Store
+*.log
+node_modules/

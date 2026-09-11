@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>健保申報資料去識別化轉 CSV 工具｜下載</title>
+<style>
+  body { margin: 0; background: #f4f6f8; color: #1d2733; font: 16px/1.7 "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 48px 16px; }
+  .card { background: #fff; border: 1px solid #d9e0e7; border-radius: 12px; padding: 28px; }
+  h1 { font-size: 24px; margin: 0 0 8px; }
+  p { margin: 8px 0; }
+  .btns { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+  a.btn { display: inline-block; padding: 12px 22px; border-radius: 8px; text-decoration: none; font-weight: 600; }
+  a.primary { background: #0f6e56; color: #fff; }
+  a.ghost { background: #eef1f4; color: #1d2733; }
+  ol { padding-left: 22px; }
+  .note { background: #fff4e8; border-left: 4px solid #b4540a; padding: 10px 14px; border-radius: 6px; font-size: 14px; }
+  code { background: #eef1f4; padding: 1px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>健保申報資料去識別化轉 CSV 工具</h1>
+    <p>把健保門診費用申報檔（TOTFA-xxxxx.zip）轉成去識別化的 CSV，方便交給 ChatGPT、Claude 等工具做資料分析。單一 HTML 檔，不用安裝，資料全程留在自己的電腦。</p>
+    <div class="btns">
+      <a class="btn primary" href="健保申報轉CSV工具.html" download="健保申報轉CSV工具.html">下載工具（HTML 檔）</a>
+      <a class="btn ghost" href="健保申報轉CSV工具.html">直接在瀏覽器開啟</a>
+    </div>
+    <h2 style="font-size:18px">使用步驟</h2>
+    <ol>
+      <li>按「下載工具」，把 <code>健保申報轉CSV工具.html</code> 存到電腦（例如桌面）。</li>
+      <li>用 Microsoft Edge 或 Google Chrome 開啟這個 HTML 檔。</li>
+      <li>把申報檔（TOTFA-xxxxx.zip，可一次多個月份）拖進畫面，按「開始轉換」。</li>
+      <li>下載「就醫紀錄＋醫令明細」CSV，每個申報檔會產生一個同名 CSV。</li>
+    </ol>
+    <p class="note">身分證號會移除並改為隨機病人代碼，姓名改為「王○○」，出生日期只留年份，醫師身分證改為代碼。轉換過程完全在瀏覽器本機進行，不會上傳任何資料。</p>
+    <p style="font-size:14px;color:#5d6b7a">原始碼與說明：<a href="https://github.com/JEJENHU-MAKER/nhiconvert">github.com/JEJENHU-MAKER/nhiconvert</a></p>
+  </div>
+</div>
+</body>
+</html>

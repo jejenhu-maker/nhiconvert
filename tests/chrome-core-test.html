@@ -1,0 +1,26 @@
+<!DOCTYPE html><meta charset="utf-8"><body><pre id="out">running</pre>
+<script src="core.js"></script>
+<script>
+(async () => {
+  const out = [];
+  try {
+    const datasets = [];
+    for (const n of ["a.zip", "b.zip"]) {
+      const ab = await (await fetch(n)).arrayBuffer();
+      for (const ds of await loadClaimFile(n, ab)) datasets.push(ds);
+    }
+    const tables = buildTables(datasets, { idMode: "code", nameMode: "mask", birthMode: "year", staffMode: "code" });
+    out.push("STATS " + JSON.stringify(tables.stats));
+    out.push("NAMES " + tables.cases.rows.slice(0, 5).map(r => r.d49).join(" "));
+    out.push("RAWNAMES " + datasets[0].cases.slice(0, 5).map(c => c.fields.d49).join(" "));
+    const csv = toCsv(tables.cases);
+    out.push("CSVLEN " + csv.length);
+    const zip = await buildZip([{ name: "就醫紀錄.csv", data: new TextEncoder().encode(csv) }]);
+    const back = await readZip(await zip.arrayBuffer());
+    out.push("ZIP " + back.map(e => e.name + ":" + e.data.length).join(","));
+    out.push("BIG5 " + new TextDecoder("big5").decode(new Uint8Array([0xa4,0xa4,0xa4,0xe5])));
+    out.push("DONE");
+  } catch (e) { out.push("ERROR " + e.message + "\n" + e.stack); }
+  document.getElementById("out").textContent = out.join("\n");
+})();
+</script>
