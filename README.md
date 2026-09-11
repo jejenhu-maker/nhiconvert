@@ -11,6 +11,15 @@
 - 下載頁：<https://jejenhu-maker.github.io/nhiconvert/>
 - 或直接下載 Release 附件：<https://github.com/JEJENHU-MAKER/nhiconvert/releases/latest/download/nhi-claim-to-csv.html>（內容相同，只是檔名改為英文）
 
+## 上課練習用假資料
+
+`sample-data/` 內是 **程式合成的假申報檔**，僅供上課練習：
+
+- 下載頁：<https://jejenhu-maker.github.io/nhiconvert/>（「上課練習用假資料」區塊）
+- 資料包：`sample-data/健保申報假資料_上課用.zip`，內含 TOTFA-11401 ～ TOTFA-11506 共 10 個月份，格式與真實申報檔相同。
+
+假資料的病人姓名、身分證字號（檢查碼刻意錯誤，不可能是真人）、出生日期、就醫日期、醫師與機構代號、就醫識別碼全部由 `tools/gen_fake_data.py` 隨機產生，不對應任何真實的人或診所。診斷碼、藥品代號與點數結構參考真實申報格式。**請勿當作真實資料使用。**
+
 ## 使用方式
 
 **請務必先把 HTML 檔下載到自己的電腦再開啟。** 申報檔含有病患個資，工具只允許在本機檔案模式（file://）下執行；若直接從網址開啟，會顯示提示並停用選檔功能。
