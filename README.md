@@ -9,7 +9,7 @@
 ## 下載
 
 - 下載頁：<https://jejenhu-maker.github.io/nhiconvert/>
-- 或直接到 [Releases](https://github.com/JEJENHU-MAKER/nhiconvert/releases/latest) 下載 `健保申報轉CSV工具.html`
+- 或直接下載 Release 附件：<https://github.com/JEJENHU-MAKER/nhiconvert/releases/latest/download/nhi-claim-to-csv.html>（內容相同，只是檔名改為英文）
 
 ## 使用方式
 
