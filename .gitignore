@@ -9,6 +9,7 @@
 # 例外：上課用的合成假資料（由 tools/gen_fake_data.py 產生，不含任何真實個資）
 !sample-data/TOTFA-*.zip
 !sample-data/健保申報假資料_上課用.zip
+!sample-data/NHI-teaching-6months.zip
 
 # 系統與編輯器
 Thumbs.db
